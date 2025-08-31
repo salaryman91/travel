@@ -1,103 +1,227 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import type { MBTI, Destination, Trait, Element, RegionFilter, BudgetLevel } from "@/lib/types";
+
+type BudgetChoice = { level: BudgetLevel; label: string; hint: string };
+
+const MBTIS: MBTI[] = ["INTJ","INTP","ENTJ","ENTP","INFJ","INFP","ENFJ","ENFP","ISTJ","ISTP","ESTJ","ESTP","ISFJ","ISFP","ESFJ","ESFP"];
+
+const BUDGET_CHOICES: BudgetChoice[] = [
+  { level: 1, label: "₩200,000 이하",                         hint: "초절약 — 교통/무료활동 중심" },
+  { level: 2, label: "₩200,000 초과 ~ ₩500,000 이하",         hint: "절약 — 2~3성, 가성비 맛집" },
+  { level: 3, label: "₩500,000 초과 ~ ₩900,000 이하",         hint: "중간 — 3~4성, 대표 액티비티 1~2" },
+  { level: 4, label: "₩900,000 초과 ~ ₩1,500,000 이하",       hint: "여유 — 4성+, 투어/스파" },
+  { level: 5, label: "₩1,500,000 이상",                       hint: "프리미엄 — 5성/미쉐린/개별투어" },
+];
+
+type Result = {
+  destination: Destination;
+  score: number;
+  explain: { mbtiTop: [Trait, number][], sajuTop: [Element, number][], notes: string[] };
+};
+
+export default function Page() {
+  const [mbti, setMBTI] = useState<MBTI>("INTP");
+  const [travelMonth, setMonth] = useState<number>(11);
+  const [budgetLevel, setBudget] = useState<BudgetLevel>(2);
+  const [companions, setComp] = useState<"solo"|"friends"|"family">("solo");
+  const [region, setRegion] = useState<RegionFilter>("all");
+
+  // 사주 입력 (MBTI 바로 아래)
+  const [birthDate, setBirthDate] = useState<string | undefined>(undefined);
+  const [birthTime, setBirthTime] = useState<string | undefined>(undefined);
+  const [timeUnknown, setTimeUnknown] = useState<boolean>(false);
+
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<Result[]>([]);
+  const [ctx, setCtx] = useState<{
+    traits: Record<Trait, number>;
+    elements: Record<Element, number>;
+    pillars: { yearStem: string; yearBranch: string; monthStem: string; monthBranch: string; hourBranch: string; };
+  } | null>(null);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      const payload = {
+        mbti, travelMonth, budgetLevel, companions, region,
+        birthDate,
+        birthTime: timeUnknown ? undefined : birthTime,
+      };
+      const res = await fetch("/api/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      setResults(json.results);
+      setCtx(json.ctx);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="min-h-screen bg-black text-white">
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <h1 className="text-xl font-bold mb-6">MBTI × 사주 여행 추천 (MVP)</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 space-y-4">
+          {/* MBTI */}
+          <div className="space-y-2">
+            <label className="text-sm text-neutral-300">MBTI</label>
+            <select
+              className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+              value={mbti}
+              onChange={(e) => setMBTI(e.target.value as MBTI)}
+            >
+              {MBTIS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+
+          {/* 사주 입력 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-1 space-y-2">
+              <label className="text-sm text-neutral-300">생년월일</label>
+              <input
+                type="date"
+                className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+                value={birthDate ?? ""}
+                onChange={(e) => setBirthDate(e.target.value || undefined)}
+                placeholder="YYYY-MM-DD"
+              />
+            </div>
+            <div className="col-span-1 space-y-2">
+              <label className="text-sm text-neutral-300 flex items-center justify-between">
+                <span>출생 시각</span>
+                <span className="text-xs">
+                  <input
+                    id="time-unknown"
+                    type="checkbox"
+                    className="mr-1 align-middle"
+                    checked={timeUnknown}
+                    onChange={(e) => { setTimeUnknown(e.target.checked); if (e.target.checked) setBirthTime(undefined); }}
+                  />
+                  모름
+                </span>
+              </label>
+              <input
+                type="time"
+                className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+                value={birthTime ?? ""}
+                onChange={(e) => setBirthTime(e.target.value || undefined)}
+                disabled={timeUnknown}
+                placeholder="HH:MM"
+              />
+            </div>
+          </div>
+
+          {/* 여행 월 */}
+          <div className="space-y-2">
+            <label className="text-sm text-neutral-300">여행 월</label>
+            <select
+              className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+              value={travelMonth}
+              onChange={(e) => setMonth(Number(e.target.value))}
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+            </select>
+          </div>
+
+          {/* 예산 */}
+          <div className="space-y-1">
+            <label className="text-sm text-neutral-300">예산 (1인/3박4일, 항공 제외)</label>
+            <select
+              className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+              value={budgetLevel}
+              onChange={(e) => setBudget(Number(e.target.value) as BudgetLevel)}
+            >
+              {BUDGET_CHOICES.map(b => (
+                <option key={b.level} value={b.level}>{b.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-neutral-500">{BUDGET_CHOICES.find(b => b.level === budgetLevel)?.hint}</p>
+          </div>
+
+          {/* 동반 형태 */}
+          <div className="space-y-2">
+            <label className="text-sm text-neutral-300">동반 형태</label>
+            <select
+              className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+              value={companions}
+              onChange={(e) => setComp(e.target.value as "solo"|"friends"|"family")}
+            >
+              <option value="solo">혼자</option>
+              <option value="friends">친구</option>
+              <option value="family">가족</option>
+            </select>
+          </div>
+
+          {/* 여행지 구분 */}
+          <div className="space-y-2">
+            <label className="text-sm text-neutral-300">여행지 구분</label>
+            <select
+              className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
+              value={region}
+              onChange={(e) => setRegion(e.target.value as RegionFilter)}
+            >
+              <option value="all">전체</option>
+              <option value="domestic">국내</option>
+              <option value="overseas">해외</option>
+            </select>
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full mt-2 rounded-md bg-white text-black py-2 font-medium disabled:opacity-60"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            {loading ? "계산 중…" : "추천 보기"}
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+
+        {/* 결과 */}
+        <div className="mt-6 space-y-2 text-xs text-neutral-400">
+          {ctx && (
+            <p>
+              입력 오행: 목({ctx.elements.wood.toFixed(2)}), 화({ctx.elements.fire.toFixed(2)}),
+              토({ctx.elements.earth.toFixed(2)}), 금({ctx.elements.metal.toFixed(2)}),
+              수({ctx.elements.water.toFixed(2)}) · 간지 ({ctx.pillars.yearStem}{ctx.pillars.yearBranch} /
+              {ctx.pillars.monthStem}{ctx.pillars.monthBranch} / {ctx.pillars.hourBranch})
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3 space-y-4">
+          {results.map((r) => (
+            <div key={r.destination.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">
+                  {r.destination.name}, {r.destination.country}
+                </h3>
+                <span className="text-xs text-neutral-400">score {r.score}</span>
+              </div>
+              <p className="text-sm text-neutral-400 mt-1">
+                입력 예산: {BUDGET_CHOICES.find((b) => b.level === budgetLevel)?.label}
+                {" · "}추천월: {r.destination.bestMonths?.join(", ") ?? "-"}
+                {" · "}{r.destination.region === "domestic" ? "국내" : "해외"}
+              </p>
+              <p className="text-xs text-neutral-500 mt-1">
+                목적지 예산 레벨: {"₩".repeat(r.destination.budgetLevel)} ({r.destination.budgetLevel}/5)
+              </p>
+              <div className="mt-2 text-sm">
+                <div className="font-medium">추천 이유 — MBTI: {r.explain.mbtiTop.map(([k]) => k).join(", ")}, 사주: {r.explain.sajuTop.map(([k]) => k).join(", ")}</div>
+                <ul className="list-disc ml-5 mt-1 space-y-0.5">
+                  {r.explain.notes.map((n, i) => <li key={i} className="text-neutral-300">{n}</li>)}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[11px] text-neutral-600 mt-4">* 사주 정보는 엔터테인먼트/퍼스널라이즈드 목적이며, 입력값은 저장하지 않습니다.</p>
+      </div>
+    </main>
   );
 }
