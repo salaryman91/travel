@@ -11,6 +11,7 @@ import type {
   BudgetLevel,
   Companion,
 } from "@/lib/types";
+type Tier = "S"|"A"|"B"|"C"|"D";
 
 type BudgetChoice = { level: BudgetLevel; label: string; hint: string };
 
@@ -29,7 +30,11 @@ const BUDGET_CHOICES: BudgetChoice[] = [
 
 type Result = {
   destination: Destination;
-  score: number; // 서버 원점수(반올림 X)
+  // 서버 반환 메타 (scoring.ts 완성본 기준)
+  score: number;        // 내부 원점수(디버그/정렬 참고용)
+  tier: Tier;           // "S" | "A" | "B" | "C" | "D"
+  share: number;        // 0~1 (상위 후보군 내 소프트맥스 비중)
+  percentile: number;   // 0=최상위, 100=최하위
   explain: { mbtiTop: [Trait, number][], sajuTop: [Element, number][], notes: string[] };
 };
 
@@ -78,9 +83,6 @@ export default function Page() {
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<Result[]>([]);
-  // 점수 정규화(목록 내 min-max) + 동점 랭크 대체
-  const [scoreRange, setScoreRange] = useState<{min:number; max:number}>({ min: 0, max: 1 });
-  const [useRankFallback, setUseRankFallback] = useState(false);
 
   // 12시간 표기를 HH:MM(24시간)으로 변환
   const updateBirthTimeFromParts = (ap: "AM"|"PM", hStr: string, mStr: string, unknown: boolean) => {
@@ -127,17 +129,6 @@ export default function Page() {
       const json = await res.json();
       const arr: Result[] = json.results ?? [];
       setResults(arr);
-
-      if (arr.length > 0) {
-        const vals = arr.map(r => r.score);
-        const min = Math.min(...vals);
-        const max = Math.max(...vals);
-        setScoreRange({ min, max });
-        setUseRankFallback((max - min) < 1e-9); // 동점에 가까우면 랭크 기반 대체
-      } else {
-        setScoreRange({ min: 0, max: 1 });
-        setUseRankFallback(false);
-      }
 
       setCtx(json.ctx);
     } catch (e:any) {
@@ -441,20 +432,6 @@ export default function Page() {
 
         <div className="mt-3 space-y-4">
           {results.map((r, i) => {
-            // 백분률 계산: 스프레드 거의 0이면 랭크 기반, 1건이면 100%
-            const getPct = () => {
-              if (useRankFallback) {
-                if (results.length <= 1) return 100;
-                const denom = results.length - 1;
-                return Math.round(100 * ((results.length - 1 - i) / denom)); // 1등=100, 꼴등=0
-              } else {
-                const spread = Math.max(1e-12, scoreRange.max - scoreRange.min);
-                return Math.round(100 * ((r.score - scoreRange.min) / spread));
-              }
-            };
-            const pct = getPct();
-            // 사용자 화면에서는 0% 카드는 숨김(디버그 모드에서는 표시)
-            if (!SHOW_DEBUG && pct === 0) return null;
 
             return (
               <div key={r.destination.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
@@ -462,15 +439,12 @@ export default function Page() {
                   <h3 className="font-semibold">
                     {r.destination.name}, {r.destination.country}
                   </h3>
-                  <span className="text-xs text-neutral-300">
-                    적합도 {pct}%{SHOW_DEBUG && <span className="text-neutral-500"> (score {r.score.toFixed(4)})</span>}
+                  <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold bg-white text-black">
+                    추천 등급 {r.tier}
                   </span>
                 </div>
 
-                {/* Progress bar */}
-                <div className="mt-2 h-1.5 w-full bg-neutral-800 rounded">
-                  <div className="h-full rounded bg-white" style={{ width: `${pct}%` }} />
-                </div>
+                {/* (progress bar removed) */}
 
                 {/* 디버그: 입력 예산/추천월/목적지 예산 */}
                 {SHOW_DEBUG && (
@@ -486,6 +460,9 @@ export default function Page() {
                         ?? `레벨 ${r.destination.budgetLevel}/5`
                       } ({r.destination.budgetLevel}/5)
                     </p>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      (debug) score {r.score.toFixed(4)}
+                    </p>                    
                   </>
                 )}
 
