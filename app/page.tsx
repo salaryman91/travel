@@ -2,7 +2,15 @@
 "use client";
 
 import { useState } from "react";
-import type { MBTI, Destination, Trait, Element, RegionFilter, BudgetLevel, Companion } from "@/lib/types";
+import type {
+  MBTI,
+  Destination,
+  Trait,
+  Element,
+  RegionFilter,
+  BudgetLevel,
+  Companion,
+} from "@/lib/types";
 
 type BudgetChoice = { level: BudgetLevel; label: string; hint: string };
 
@@ -21,7 +29,7 @@ const BUDGET_CHOICES: BudgetChoice[] = [
 
 type Result = {
   destination: Destination;
-  score: number;
+  score: number; // 서버 원점수(반올림 X)
   explain: { mbtiTop: [Trait, number][], sajuTop: [Element, number][], notes: string[] };
 };
 
@@ -54,7 +62,6 @@ export default function Page() {
   const [budgetLevel, setBudget] = useState<BudgetLevel>(1);
   const [companions, setComp] = useState<Companion>("solo");
   const [region, setRegion] = useState<RegionFilter>("all");
-  const [maxFlightHours, setMaxFlightHours] = useState<string>("");  
 
   // 사주 입력 — DOB 3분할
   const [birthDate, setBirthDate] = useState<string | undefined>(undefined);
@@ -71,17 +78,9 @@ export default function Page() {
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<Result[]>([]);
-  // 점수 정규화(목록 내 min-max)용
-  const [scoreRange, setScoreRange] = useState<{min:number; max:number}>({ min: 0, max: 1 });  
-  const [ctx, setCtx] = useState<{
-    traits: Record<Trait, number>;
-    elements: Record<Element, number>;
-    pillars: {
-      yearStem: string; yearBranch: string;
-      monthStem: string; monthBranch: string;
-      hourBranch: string;
-    };
-  } | null>(null);
+  // 점수 정규화(목록 내 min-max) + 동점 랭크 대체
+  const [scoreRange, setScoreRange] = useState<{min:number; max:number}>({ min: 0, max: 1 });
+  const [useRankFallback, setUseRankFallback] = useState(false);
 
   // 12시간 표기를 HH:MM(24시간)으로 변환
   const updateBirthTimeFromParts = (ap: "AM"|"PM", hStr: string, mStr: string, unknown: boolean) => {
@@ -115,21 +114,31 @@ export default function Page() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(`요청 실패(${res.status}) ${t.slice(0,140)}`);
+         let msg = `요청 실패(${res.status})`;
+         try {
+           const err = await res.json();
+           if (err?.issues) msg += " - " + JSON.stringify(err.issues).slice(0,200);
+         } catch {
+           const t = await res.text();
+           msg += " " + t.slice(0,140);
+         }
+         throw new Error(msg);
       }
       const json = await res.json();
       const arr: Result[] = json.results ?? [];
       setResults(arr);
-      // 목록 내 min-max로 정규화 → 백분률 표시
+
       if (arr.length > 0) {
         const vals = arr.map(r => r.score);
         const min = Math.min(...vals);
         const max = Math.max(...vals);
         setScoreRange({ min, max });
+        setUseRankFallback((max - min) < 1e-9); // 동점에 가까우면 랭크 기반 대체
       } else {
         setScoreRange({ min: 0, max: 1 });
+        setUseRankFallback(false);
       }
+
       setCtx(json.ctx);
     } catch (e:any) {
       setResults([]); setCtx(null);
@@ -139,10 +148,20 @@ export default function Page() {
     }
   };
 
+  const [ctx, setCtx] = useState<{
+    traits: Record<Trait, number>;
+    elements: Record<Element, number>;
+    pillars: {
+      yearStem: string; yearBranch: string;
+      monthStem: string; monthBranch: string;
+      hourBranch: string;
+    };
+  } | null>(null);
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <h1 className="text-xl font-bold mb-6">MBTI × 사주 여행지 추천</h1>
+        <h1 className="text-xl font-bold mb-6">MBTI × 사주 결합 여행지 추천</h1>
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 space-y-4">
           {/* MBTI */}
@@ -391,7 +410,7 @@ export default function Page() {
             disabled={loading}
             className="w-full mt-2 rounded-md bg-white text-black py-2 font-medium disabled:opacity-60"
           >
-            {loading ? "계산 중…" : "추천 보기"}
+            {loading ? "계산 중…" : "추천 여행지 보기"}
           </button>
 
           {/* 에러 배너 */}
@@ -421,61 +440,67 @@ export default function Page() {
         )}
 
         <div className="mt-3 space-y-4">
-          {results.map((r) => (
-            <div key={r.destination.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">
-                  {r.destination.name}, {r.destination.country}
-                </h3>
-                {/* 백분률 표시(정규화). 디버그에 원시 점수도 함께 노출 */}
-                {(() => {
-                  const spread = Math.max(1e-9, scoreRange.max - scoreRange.min);
-                  const pct = Math.round(100 * ((r.score - scoreRange.min) / spread));
-                  return (
-                    <span className="text-xs text-neutral-300">
-                      적합도 {pct}%
-                      {SHOW_DEBUG && <span className="text-neutral-500"> (raw {r.score.toFixed(4)})</span>}
-                    </span>
-                  );
-                })()}
-              </div>
-              {/* Progress-like bar */}
-              <div className="mt-2 h-1.5 w-full bg-neutral-800 rounded">
-                {(() => {
-                  const spread = Math.max(1e-9, scoreRange.max - scoreRange.min);
-                  const pct = Math.round(100 * ((r.score - scoreRange.min) / spread));
-                  return <div className="h-full rounded bg-white" style={{ width: `${pct}%` }} />;
-                })()}
-              </div>
+          {results.map((r, i) => {
+            // 백분률 계산: 스프레드 거의 0이면 랭크 기반, 1건이면 100%
+            const getPct = () => {
+              if (useRankFallback) {
+                if (results.length <= 1) return 100;
+                const denom = results.length - 1;
+                return Math.round(100 * ((results.length - 1 - i) / denom)); // 1등=100, 꼴등=0
+              } else {
+                const spread = Math.max(1e-12, scoreRange.max - scoreRange.min);
+                return Math.round(100 * ((r.score - scoreRange.min) / spread));
+              }
+            };
+            const pct = getPct();
+            // 사용자 화면에서는 0% 카드는 숨김(디버그 모드에서는 표시)
+            if (!SHOW_DEBUG && pct === 0) return null;
 
-              {/* 디버그: 입력 예산/추천월/목적지 예산 */}
-              {SHOW_DEBUG && (
-                <>
-                  <p className="text-sm text-neutral-400 mt-1">
-                    입력 예산: {BUDGET_CHOICES.find((b) => b.level === budgetLevel)?.label}
-                    {" · "}추천월: {r.destination.bestMonths?.join(", ") ?? "-"}
-                    {" · "}{r.destination.region === "domestic" ? "국내" : "해외"}
-                  </p>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    목적지 예산: {
-                      BUDGET_CHOICES.find((b) => b.level === r.destination.budgetLevel)?.label
-                      ?? `레벨 ${r.destination.budgetLevel}/5`
-                    } ({r.destination.budgetLevel}/5)
-                  </p>
-                </>
-              )}
-
-              <div className="mt-2 text-sm">
-                <div className="font-medium">
-                  추천 이유 — MBTI: {r.explain.mbtiTop.map(([k]) => TRAIT_LABEL_KO[k]).join(", ")},
-                  {" "}사주: {r.explain.sajuTop.map(([k]) => ELEMENT_LABEL_KO[k]).join(", ")}
+            return (
+              <div key={r.destination.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">
+                    {r.destination.name}, {r.destination.country}
+                  </h3>
+                  <span className="text-xs text-neutral-300">
+                    적합도 {pct}%{SHOW_DEBUG && <span className="text-neutral-500"> (score {r.score.toFixed(4)})</span>}
+                  </span>
                 </div>
-                <ul className="list-disc ml-5 mt-1 space-y-0.5">
-                  {r.explain.notes.map((n, i) => <li key={i} className="text-neutral-300">{n}</li>)}
-                </ul>
+
+                {/* Progress bar */}
+                <div className="mt-2 h-1.5 w-full bg-neutral-800 rounded">
+                  <div className="h-full rounded bg-white" style={{ width: `${pct}%` }} />
+                </div>
+
+                {/* 디버그: 입력 예산/추천월/목적지 예산 */}
+                {SHOW_DEBUG && (
+                  <>
+                    <p className="text-sm text-neutral-400 mt-1">
+                      입력 예산: {BUDGET_CHOICES.find((b) => b.level === budgetLevel)?.label}
+                      {" · "}추천월: {r.destination.bestMonths?.join(", ") ?? "-"}
+                      {" · "}{r.destination.region === "domestic" ? "국내" : "해외"}
+                    </p>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      목적지 예산: {
+                        BUDGET_CHOICES.find((b) => b.level === r.destination.budgetLevel)?.label
+                        ?? `레벨 ${r.destination.budgetLevel}/5`
+                      } ({r.destination.budgetLevel}/5)
+                    </p>
+                  </>
+                )}
+
+                <div className="mt-2 text-sm">
+                  <div className="font-medium">
+                    추천 이유 — MBTI: {r.explain.mbtiTop.map(([k]) => TRAIT_LABEL_KO[k]).join(", ")},
+                    {" "}사주: {r.explain.sajuTop.map(([k]) => ELEMENT_LABEL_KO[k]).join(", ")}
+                  </div>
+                  <ul className="list-disc ml-5 mt-1 space-y-0.5">
+                    {r.explain.notes.map((n, idx) => <li key={idx} className="text-neutral-300">{n}</li>)}
+                  </ul>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <p className="text-[11px] text-neutral-600 mt-4">

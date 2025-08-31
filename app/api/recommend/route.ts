@@ -13,14 +13,24 @@ const InputSchema = z.object({
       "ISTJ","ISTP","ESTJ","ESTP","ISFJ","ISFP","ESFJ","ESFP",
     ])
     .optional(),
-  travelMonth: z.number().int().min(1).max(12).optional(),
-  budgetLevel: z.number().int().min(1).max(5).optional(),
+  travelMonth: z.coerce.number().int().min(1).max(12).optional(),
+  budgetLevel: z.coerce.number().int().min(1).max(5).optional(),
   companions: z.enum(["solo","couple","friends","family"]).optional(),
   region: z.enum(["all","domestic","overseas"]).optional(),
   // YYYY-MM-DD
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  birthDate: z
+    .string()
+    .transform(s => (typeof s === "string" ? s.trim() : s))
+    .refine((s) => s === undefined || s === "" || /^\d{4}-\d{2}-\d{2}$/.test(s as string), {
+      message: "birthDate must be YYYY-MM-DD",
+    })
+    .optional()
+    .transform(s => (!s ? undefined : s)),
   // HH:MM (24h)
-  birthTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  birthTime: z
+    .union([z.literal(""), z.string().regex(/^\d{2}:\d{2}$/)])
+    .optional()
+    .transform((s) => (!s ? undefined : s)),
 });
 
 export async function POST(req: Request) {

@@ -25,7 +25,7 @@ export default async function OG() {
         <div style={{ opacity: 0.8, fontSize: 24, marginBottom: 12 }}>
           개인 프로젝트 · Vercel Hobby
         </div>
-        <div>MBTI × 사주 여행 추천</div>
+        <div>MBTI × 사주 결합 여행지 추천</div>
         <div style={{ fontSize: 28, marginTop: 12, opacity: 0.9 }}>
           규칙 기반(설명 가능) · 개인정보 미저장
         </div>
