@@ -21,10 +21,37 @@ type Result = {
   explain: { mbtiTop: [Trait, number][], sajuTop: [Element, number][], notes: string[] };
 };
 
+// 한글 라벨 매핑
+const TRAIT_LABEL_KO: Record<Trait, string> = {
+  social: "사회성/교류",
+  novelty: "새로움/탐색",
+  structure: "질서/안정",
+  flexibility: "유연성/자유",
+  sensory: "감각/자극",
+  culture: "문화/역사",
+};
+const ELEMENT_LABEL_KO: Record<Element, string> = {
+  wood: "목(숲/정원)",
+  fire: "화(축제/활기)",
+  earth: "토(산/온천)",
+  metal: "금(도시/질서)",
+  water: "수(바다/하천)",
+};
+
+// 디버그 표시 플래그:
+// - 로컬(dev)에서는 기본 ON
+// - 프로덕션에서는 기본 OFF, 필요하면 NEXT_PUBLIC_DEBUG=true로 강제 ON
+const SHOW_DEBUG =
+  process.env.NEXT_PUBLIC_DEBUG === "true" || process.env.NODE_ENV !== "production";
+
+// 목적지 카드에서도 동일한 예산 문구를 사용하기 위한 헬퍼
+const budgetLabelFromLevel = (lvl: BudgetLevel) =>
+  BUDGET_CHOICES.find((b) => b.level === lvl)?.label ?? `레벨 ${lvl}/5`;
+
 export default function Page() {
-  const [mbti, setMBTI] = useState<MBTI>("INTP");
-  const [travelMonth, setMonth] = useState<number>(11);
-  const [budgetLevel, setBudget] = useState<BudgetLevel>(2);
+  const [mbti, setMBTI] = useState<MBTI>(MBTIS[0]); // INTJ
+  const [travelMonth, setMonth] = useState<number>(1);
+  const [budgetLevel, setBudget] = useState<BudgetLevel>(1);
   const [companions, setComp] = useState<"solo"|"friends"|"family">("solo");
   const [region, setRegion] = useState<RegionFilter>("all");
 
@@ -81,16 +108,24 @@ export default function Page() {
           </div>
 
           {/* 사주 입력 */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 items-end">
             <div className="col-span-1 space-y-2">
               <label className="text-sm text-neutral-300">생년월일</label>
-              <input
-                type="date"
-                className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
-                value={birthDate ?? ""}
-                onChange={(e) => setBirthDate(e.target.value || undefined)}
-                placeholder="YYYY-MM-DD"
-              />
+              <div className="relative">
+                <input
+                  type="date"
+                  className="w-full h-10 rounded-md bg-neutral-900 border border-neutral-700 px-3 pr-10 appearance-none tabular-nums"
+                  value={birthDate ?? ""}
+                  onChange={(e) => setBirthDate(e.target.value || undefined)}
+                  placeholder="YYYY-MM-DD"
+                />
+                {/* custom calendar icon (same position as time icon) */}
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 opacity-60"
+                     width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" />
+                  <path d="M8 2v4M16 2v4M3 10h18" stroke="currentColor" />
+                </svg>
+              </div>
             </div>
             <div className="col-span-1 space-y-2">
               <label className="text-sm text-neutral-300 flex items-center justify-between">
@@ -106,14 +141,22 @@ export default function Page() {
                   모름
                 </span>
               </label>
-              <input
-                type="time"
-                className="w-full rounded-md bg-neutral-900 border border-neutral-700 px-3 py-2"
-                value={birthTime ?? ""}
-                onChange={(e) => setBirthTime(e.target.value || undefined)}
-                disabled={timeUnknown}
-                placeholder="HH:MM"
-              />
+              <div className="relative">
+                <input
+                  type="time"
+                  className="w-full h-10 rounded-md bg-neutral-900 border border-neutral-700 px-3 pr-10 appearance-none tabular-nums"
+                  value={birthTime ?? ""}
+                  onChange={(e) => setBirthTime(e.target.value || undefined)}
+                  disabled={timeUnknown}
+                  placeholder="HH:MM"
+                />
+                {/* custom clock icon (same position as date icon) */}
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 opacity-60"
+                     width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" />
+                  <path d="M12 7v5l3 2" stroke="currentColor" />
+                </svg>
+              </div>
             </div>
           </div>
 
@@ -181,17 +224,19 @@ export default function Page() {
           </button>
         </div>
 
-        {/* 결과 */}
-        <div className="mt-6 space-y-2 text-xs text-neutral-400">
-          {ctx && (
-            <p>
-              입력 오행: 목({ctx.elements.wood.toFixed(2)}), 화({ctx.elements.fire.toFixed(2)}),
-              토({ctx.elements.earth.toFixed(2)}), 금({ctx.elements.metal.toFixed(2)}),
-              수({ctx.elements.water.toFixed(2)}) · 간지 ({ctx.pillars.yearStem}{ctx.pillars.yearBranch} /
-              {ctx.pillars.monthStem}{ctx.pillars.monthBranch} / {ctx.pillars.hourBranch})
-            </p>
-          )}
-        </div>
+        {/* 결과 — 디버그 정보(오행/간지)는 개발 모드에서만 노출 (중복 제거) */}
+        {SHOW_DEBUG && (
+          <div className="mt-6 space-y-2 text-xs text-neutral-400">
+            {ctx && (
+              <p>
+                입력 오행: 목({ctx.elements.wood.toFixed(2)}), 화({ctx.elements.fire.toFixed(2)}),
+                토({ctx.elements.earth.toFixed(2)}), 금({ctx.elements.metal.toFixed(2)}),
+                수({ctx.elements.water.toFixed(2)}) · 간지 ({ctx.pillars.yearStem}{ctx.pillars.yearBranch} /
+                {ctx.pillars.monthStem}{ctx.pillars.monthBranch} / {ctx.pillars.hourBranch})
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 space-y-4">
           {results.map((r) => (
@@ -200,18 +245,30 @@ export default function Page() {
                 <h3 className="font-semibold">
                   {r.destination.name}, {r.destination.country}
                 </h3>
-                <span className="text-xs text-neutral-400">score {r.score}</span>
+                {/* 점수도 사용자 혼동을 줄이려면 디버그 모드에서만 노출 권장 */}
+                {SHOW_DEBUG && <span className="text-xs text-neutral-400">score {r.score}</span>}
               </div>
-              <p className="text-sm text-neutral-400 mt-1">
-                입력 예산: {BUDGET_CHOICES.find((b) => b.level === budgetLevel)?.label}
-                {" · "}추천월: {r.destination.bestMonths?.join(", ") ?? "-"}
-                {" · "}{r.destination.region === "domestic" ? "국내" : "해외"}
-              </p>
-              <p className="text-xs text-neutral-500 mt-1">
-                목적지 예산 레벨: {"₩".repeat(r.destination.budgetLevel)} ({r.destination.budgetLevel}/5)
-              </p>
+              {/* 디버그 정보(입력 예산/추천월/목적지 예산)는 개발 모드에서만 노출 */}
+              {SHOW_DEBUG && (
+                <>
+                  <p className="text-sm text-neutral-400 mt-1">
+                    입력 예산: {BUDGET_CHOICES.find((b) => b.level === budgetLevel)?.label}
+                    {" · "}추천월: {r.destination.bestMonths?.join(", ") ?? "-"}
+                    {" · "}{r.destination.region === "domestic" ? "국내" : "해외"}
+                  </p>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    목적지 예산: {
+                      BUDGET_CHOICES.find((b) => b.level === r.destination.budgetLevel)?.label
+                      ?? `레벨 ${r.destination.budgetLevel}/5`
+                    } ({r.destination.budgetLevel}/5)
+                  </p>
+                </>
+              )}
               <div className="mt-2 text-sm">
-                <div className="font-medium">추천 이유 — MBTI: {r.explain.mbtiTop.map(([k]) => k).join(", ")}, 사주: {r.explain.sajuTop.map(([k]) => k).join(", ")}</div>
+                <div className="font-medium">
+                  추천 이유 — MBTI: {r.explain.mbtiTop.map(([k]) => TRAIT_LABEL_KO[k]).join(", ")},
+                  {" "}사주: {r.explain.sajuTop.map(([k]) => ELEMENT_LABEL_KO[k]).join(", ")}
+                </div>
                 <ul className="list-disc ml-5 mt-1 space-y-0.5">
                   {r.explain.notes.map((n, i) => <li key={i} className="text-neutral-300">{n}</li>)}
                 </ul>
@@ -222,6 +279,21 @@ export default function Page() {
 
         <p className="text-[11px] text-neutral-600 mt-4">* 사주 정보는 엔터테인먼트/퍼스널라이즈드 목적이며, 입력값은 저장하지 않습니다.</p>
       </div>
+      {/* native picker icons hidden for consistent padding/spacing */}
+      <style jsx global>{`
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator {
+          opacity: 0; /* hide native icon */
+          width: 0;
+          height: 0;
+        }
+        /* remove spin buttons (some browsers) for time input */
+        input[type="time"]::-webkit-inner-spin-button,
+        input[type="time"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+      `}</style>
     </main>
   );
 }

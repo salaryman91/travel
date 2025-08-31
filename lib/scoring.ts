@@ -7,8 +7,23 @@ import type {
 
 // 가중치: 예산 영향 강화
 const W = { alpha: 0.50, beta: 0.40, gamma: 0.35 };
-// 예산 상한 필터: 사용자 예산보다 2단계 이상 비싸면 제외
-const HARD_BUDGET_FILTER = true;
+// 예산 필터 모드
+//  - 'strict' : 선택한 레벨과 "동일"한 목적지만 허용 (요청 사항)
+//  - 'band'   : 선택 ±1 레벨 허용
+//  - 'cap'    : 사용자 예산보다 2단계 이상 비싸면 제외(기존 동작)
+type BudgetFilterMode = "strict" | "band" | "cap";
+const BUDGET_FILTER_MODE: BudgetFilterMode = "strict";
+
+function isBudgetAllowed(d: Destination, i: UserInput) {
+  if (!i.budgetLevel) return true; // 미선택 시 모든 예산 허용
+  const delta = d.budgetLevel - i.budgetLevel;
+  switch (BUDGET_FILTER_MODE) {
+    case "strict": return delta === 0;
+    case "band":   return Math.abs(delta) <= 1;
+    case "cap":
+    default:       return delta < 2; // 2단계 이상 비싸면 제외, 싼 곳 허용(기존)
+  }
+}
 
 const dot = <K extends string>(
   a: Partial<Record<K, number>>,
@@ -96,8 +111,8 @@ export function recommend(input: UserInput, opt?: { limit?: number }) {
       ? destinations.filter((d) => d.region === input.region)
       : destinations;
 
-  if (HARD_BUDGET_FILTER && input.budgetLevel)
-    pool = pool.filter((d) => (d.budgetLevel - input.budgetLevel!) < 2);
+  // 예산 필터 적용 (strict 모드면 선택 레벨과 동일한 목적지만 남김)
+  pool = pool.filter((d) => isBudgetAllowed(d, input));
 
   return pool
     .map((d) => {
