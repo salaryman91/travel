@@ -81,11 +81,14 @@ export default function Page() {
     setLoading(true);
     setError(null);
     try {
+      // ✅ 모름(timeUnknown)일 땐 birthTime을 아예 넣지 않음
       const payload: any = {
         mbti, travelMonth, budgetLevel, companions, region,
         ...(bd.birthDate ? { birthDate: bd.birthDate } : {}),
-        ...(bd.timeUnknown ? { birthTime: null } : (bd.birthTime ? { birthTime: bd.birthTime } : {})),
       };
+      if (!bd.timeUnknown && bd.birthTime) {
+        payload.birthTime = bd.birthTime; // HH:mm
+      }
 
       const res = await fetch("/api/recommend", {
         method: "POST",
@@ -97,7 +100,9 @@ export default function Page() {
         let msg = `요청 실패(${res.status})`;
         try {
           const err = await res.json();
+          // zod 에러 호환
           if (err?.issues) msg += " - " + JSON.stringify(err.issues).slice(0, 200);
+          else if (err?.error) msg += " - " + String(err.error).slice(0, 200);
         } catch {
           const t = await res.text();
           msg += " " + t.slice(0, 140);
@@ -230,6 +235,7 @@ export default function Page() {
           </div>
 
           <button
+            data-testid="submit"
             onClick={handleSubmit}
             disabled={loading}
             className="w-full mt-2 rounded-md bg-white text-black py-2 font-medium disabled:opacity-60"

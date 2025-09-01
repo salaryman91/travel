@@ -1,11 +1,10 @@
-// components/forms/BirthDateTime.tsx
 "use client";
 
 import { useEffect, useMemo, type ReactNode } from "react";
 
 export type BirthValue = {
   birthDate?: string;        // YYYY-MM-DD
-  birthTime?: string | null; // HH:mm | null(모름)
+  birthTime?: string | null; // HH:mm | null(모름) — 내부적으로는 undefined로 정리
   timeUnknown?: boolean;
 
   year?: string;
@@ -19,16 +18,14 @@ export type BirthValue = {
 function pad2(s: string) { return s.padStart(2, "0"); }
 function daysInMonth(year: number, month: number) { return new Date(year, month, 0).getDate(); }
 
-/** 원래 로직 유지하되 구조 단순화 */
+/** 오버레이 플레이스홀더 래퍼 */
 function WithPlaceholder({
   empty, text, children,
 }: { empty: boolean; text: string; children: ReactNode }) {
   return (
     <div className="select-wrap">
       <span className={`select-placeholder ${empty ? "" : "hidden"}`}>{text}</span>
-      <div className="contents">
-        {children}
-      </div>
+      <div className="contents">{children}</div>
     </div>
   );
 }
@@ -65,12 +62,22 @@ export default function BirthDateTime({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.year, value.month, value.day]);
 
-  // birthTime 조합
+  // ✅ 모름일 때는 birthTime/세부 시간 필드 제거(=undefined)
   useEffect(() => {
     if (value.timeUnknown) {
-      if (value.birthTime !== null) onChange({ ...value, birthTime: null });
-      return;
+      const next = { ...value } as BirthValue;
+      if (next.birthTime !== undefined) next.birthTime = undefined;
+      if (next.ampm !== undefined || next.hour12 !== undefined || next.minute !== undefined) {
+        delete next.ampm; delete next.hour12; delete next.minute;
+      }
+      onChange(next);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.timeUnknown]);
+
+  // birthTime 조합 (모름이 아닐 때만)
+  useEffect(() => {
+    if (value.timeUnknown) return;
     const { ampm, hour12, minute } = value;
     if (hour12 && minute && ampm) {
       const h12 = Math.min(12, Math.max(1, parseInt(hour12, 10))) % 12;
@@ -95,11 +102,7 @@ export default function BirthDateTime({
             <select
               data-testid="bdt-year" aria-label="연도"
               className="form-select w-full"
-              style={{ 
-                color: !value.year ? 'transparent' : '#ffffff',
-                fontSize: '16px', // iOS 줌 방지
-                minHeight: '44px' // 터치 친화적
-              }}
+              style={{ color: !value.year ? 'transparent' : '#ffffff', fontSize: '16px', minHeight: '44px' }}
               value={value.year ?? ""}
               onChange={(e) => onChange({ ...value, year: e.target.value })}
             >
@@ -113,11 +116,7 @@ export default function BirthDateTime({
             <select
               data-testid="bdt-month" aria-label="월"
               className="form-select w-full"
-              style={{ 
-                color: !value.month ? 'transparent' : '#ffffff',
-                fontSize: '16px',
-                minHeight: '44px'
-              }}
+              style={{ color: !value.month ? 'transparent' : '#ffffff', fontSize: '16px', minHeight: '44px' }}
               value={value.month ?? ""}
               onChange={(e) => onChange({ ...value, month: pad2(e.target.value) })}
             >
@@ -133,11 +132,7 @@ export default function BirthDateTime({
             <select
               data-testid="bdt-day" aria-label="일"
               className="form-select w-full"
-              style={{ 
-                color: !value.day ? 'transparent' : '#ffffff',
-                fontSize: '16px',
-                minHeight: '44px'
-              }}
+              style={{ color: !value.day ? 'transparent' : '#ffffff', fontSize: '16px', minHeight: '44px' }}
               value={value.day ?? ""}
               onChange={(e) => onChange({ ...value, day: pad2(e.target.value) })}
             >
@@ -159,8 +154,8 @@ export default function BirthDateTime({
           <span>출생 시각</span>
           <label className="text-xs flex items-center gap-1 cursor-pointer">
             <input
-              data-testid="bdt-unknown" 
-              type="checkbox" 
+              data-testid="bdt-unknown"
+              type="checkbox"
               className="w-3 h-3"
               checked={!!value.timeUnknown}
               onChange={(e) => onChange({ ...value, timeUnknown: e.target.checked })}
@@ -176,12 +171,7 @@ export default function BirthDateTime({
               data-testid="bdt-ampm" aria-label="오전오후"
               className="form-select w-full"
               disabled={isDim}
-              style={{ 
-                color: !value.ampm ? 'transparent' : '#ffffff',
-                fontSize: '16px',
-                minHeight: '44px',
-                opacity: isDim ? 0.6 : 1
-              }}
+              style={{ color: !value.ampm ? 'transparent' : '#ffffff', fontSize: '16px', minHeight: '44px', opacity: isDim ? 0.6 : 1 }}
               value={value.ampm ?? ""}
               onChange={(e) => onChange({ ...value, ampm: e.target.value as "AM" | "PM" })}
             >
@@ -197,12 +187,7 @@ export default function BirthDateTime({
               data-testid="bdt-hour" aria-label="시"
               className="form-select w-full"
               disabled={isDim}
-              style={{ 
-                color: !value.hour12 ? 'transparent' : '#ffffff',
-                fontSize: '16px',
-                minHeight: '44px',
-                opacity: isDim ? 0.6 : 1
-              }}
+              style={{ color: !value.hour12 ? 'transparent' : '#ffffff', fontSize: '16px', minHeight: '44px', opacity: isDim ? 0.6 : 1 }}
               value={value.hour12 ?? ""}
               onChange={(e) => onChange({ ...value, hour12: e.target.value })}
             >
@@ -219,12 +204,7 @@ export default function BirthDateTime({
               data-testid="bdt-minute" aria-label="분"
               className="form-select w-full"
               disabled={isDim}
-              style={{ 
-                color: !value.minute ? 'transparent' : '#ffffff',
-                fontSize: '16px',
-                minHeight: '44px',
-                opacity: isDim ? 0.6 : 1
-              }}
+              style={{ color: !value.minute ? 'transparent' : '#ffffff', fontSize: '16px', minHeight: '44px', opacity: isDim ? 0.6 : 1 }}
               value={value.minute ?? ""}
               onChange={(e) => onChange({ ...value, minute: e.target.value })}
             >
