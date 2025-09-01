@@ -81,7 +81,7 @@ export default function Page() {
     setLoading(true);
     setError(null);
     try {
-      // ✅ 모름(timeUnknown)일 땐 birthTime을 아예 넣지 않음
+      // 모름일 땐 birthTime을 아예 보내지 않음(서버 스키마가 string만 허용)
       const payload: any = {
         mbti, travelMonth, budgetLevel, companions, region,
         ...(bd.birthDate ? { birthDate: bd.birthDate } : {}),
@@ -100,7 +100,6 @@ export default function Page() {
         let msg = `요청 실패(${res.status})`;
         try {
           const err = await res.json();
-          // zod 에러 호환
           if (err?.issues) msg += " - " + JSON.stringify(err.issues).slice(0, 200);
           else if (err?.error) msg += " - " + String(err.error).slice(0, 200);
         } catch {

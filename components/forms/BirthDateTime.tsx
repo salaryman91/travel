@@ -4,7 +4,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 
 export type BirthValue = {
   birthDate?: string;        // YYYY-MM-DD
-  birthTime?: string | null; // HH:mm | null(모름) — 내부적으로는 undefined로 정리
+  birthTime?: string;        // HH:mm (모름이면 undefined)
   timeUnknown?: boolean;
 
   year?: string;
@@ -18,7 +18,6 @@ export type BirthValue = {
 function pad2(s: string) { return s.padStart(2, "0"); }
 function daysInMonth(year: number, month: number) { return new Date(year, month, 0).getDate(); }
 
-/** 오버레이 플레이스홀더 래퍼 */
 function WithPlaceholder({
   empty, text, children,
 }: { empty: boolean; text: string; children: ReactNode }) {
@@ -44,7 +43,7 @@ export default function BirthDateTime({
   );
   const minutes = useMemo(() => Array.from({ length: 60 }, (_, i) => pad2(String(i))), []);
 
-  // day 보정(말일 초과 방지)
+  // day 보정
   useEffect(() => {
     if (!value.year || !value.month) return;
     const dim = daysInMonth(Number(value.year), Number(value.month));
@@ -62,20 +61,18 @@ export default function BirthDateTime({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.year, value.month, value.day]);
 
-  // ✅ 모름일 때는 birthTime/세부 시간 필드 제거(=undefined)
+  // 모름이면 시간 관련 값을 모두 비우고 birthTime을 undefined로 유지
   useEffect(() => {
     if (value.timeUnknown) {
-      const next = { ...value } as BirthValue;
-      if (next.birthTime !== undefined) next.birthTime = undefined;
-      if (next.ampm !== undefined || next.hour12 !== undefined || next.minute !== undefined) {
-        delete next.ampm; delete next.hour12; delete next.minute;
-      }
+      const next = { ...value };
+      delete next.ampm; delete next.hour12; delete next.minute;
+      if (next.birthTime !== undefined) delete next.birthTime; // undefined로
       onChange(next);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.timeUnknown]);
 
-  // birthTime 조합 (모름이 아닐 때만)
+  // birthTime 조합 (모름 아닐 때만)
   useEffect(() => {
     if (value.timeUnknown) return;
     const { ampm, hour12, minute } = value;
@@ -84,7 +81,9 @@ export default function BirthDateTime({
       const h24 = ampm === "PM" ? h12 + 12 : h12; // 12AM→0, 12PM→12
       onChange({ ...value, birthTime: `${pad2(String(h24))}:${minute}` });
     } else if (value.birthTime !== undefined) {
-      onChange({ ...value, birthTime: undefined });
+      const next = { ...value };
+      delete next.birthTime;
+      onChange(next);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.ampm, value.hour12, value.minute, value.timeUnknown]);
