@@ -51,13 +51,26 @@ export default function BirthDateTime({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.year, value.month]);
 
-  // birthDate 조합
+  // birthDate 조합 (day 보정과 경합 방지 및 불필요 onChange 방지)
   useEffect(() => {
     const { year, month, day } = value;
     const y4 = !!year && year.length === 4;
     const m2 = !!month && month.length === 2;
     const d2 = !!day && day.length === 2;
-    onChange({ ...value, birthDate: y4 && m2 && d2 ? `${year}-${month}-${day}` : undefined });
+
+    // 해당 월의 최대 일수 초과 시, 먼저 day 보정이 반영된 뒤 다음 렌더에서 갱신
+    if (y4 && m2 && d2) {
+      const dim = daysInMonth(Number(year), Number(month));
+      if (Number(day) > dim) {
+        return;
+      }
+    }
+
+    const nextBirthDate = y4 && m2 && d2 ? `${year}-${month}-${day}` : undefined;
+
+    if (value.birthDate !== nextBirthDate) {
+      onChange({ ...value, birthDate: nextBirthDate });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.year, value.month, value.day]);
 

@@ -171,7 +171,7 @@ export default function Page() {
 
           {/* 예산 */}
           <div className="space-y-1">
-            <label className="text-sm text-neutral-300">예산 (1인/3박4일, 항공 제외)</label>
+            <label className="text-sm text-neutral-300">예산 (1인/3박4일 기준, 항공권 제외)</label>
             <div className="relative">
               <select
                 className="form-select w-full appearance-none pr-10 bg-neutral-900 border border-neutral-700 text-white"

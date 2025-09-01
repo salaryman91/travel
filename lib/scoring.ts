@@ -292,7 +292,7 @@ function explain(
   const sj = top2(elems);
   const notes = [...(d.notes ?? [])];
   if (!input.birthDate) {
-    notes.push("사주 미입력: MBTI 중심 추천");
+    notes.push("MBTI 중심 추천");
   }
   if (input.birthDate && typeof input.birthTime === "string" && input.birthTime !== "" && !/^\d{2}:\d{2}$/.test(input.birthTime)) {
     notes.push("출생 시각 미상: 시간(시지) 영향 제외");
