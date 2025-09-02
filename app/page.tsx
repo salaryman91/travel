@@ -12,9 +12,20 @@ import type {
 } from "@/lib/types";
 import BirthDateTime, { type BirthValue } from "@/components/forms/BirthDateTime";
 
+/**
+ * 페이지 컴포넌트 역할
+ * - MBTI/사주/여행월/예산/동반형태/지역 입력 폼
+ * - 서버 API(/api/recommend) 호출 → 추천 결과 렌더링
+ * - 접근성: label, role="alert", aria-live로 오류/상태 안내
+ */
+
 type Tier = "S" | "A" | "B" | "C" | "D";
 type BudgetChoice = { level: BudgetLevel; label: string; hint: string };
 
+/* ────────────────────────────────────────────────────────────
+   상수/리스트: 폼 드롭다운 옵션(클라이언트만 사용)
+   - 서버 스키마와 값(문자열) 일치 유지
+   ──────────────────────────────────────────────────────────── */
 const MBTIS: MBTI[] = [
   "INTJ","INTP","ENTJ","ENTP","INFJ","INFP","ENFJ","ENFP",
   "ISTJ","ISTP","ESTJ","ESTP","ISFJ","ISFP","ESFJ","ESFP"
@@ -28,6 +39,10 @@ const BUDGET_CHOICES: BudgetChoice[] = [
   { level: 5, label: "₩1,500,000 이상",                 hint: "프리미엄 — 5성/미쉐린/개별투어" },
 ];
 
+/**
+ * 추천 결과 타입 (서버 응답 구조에 맞춤)
+ * - explain: 추천 이유(설명 가능성 확보)
+ */
 type Result = {
   destination: Destination;
   score: number;
@@ -37,6 +52,7 @@ type Result = {
   explain: { mbtiTop: [Trait, number][], sajuTop: [Element, number][], notes: string[] };
 };
 
+/* UI 라벨 매핑: 사용자 읽기 쉬운 한국어 표기 */
 const TRAIT_LABEL_KO: Record<Trait, string> = {
   social: "사회성/교류",
   novelty: "새로움/탐색",
@@ -53,10 +69,19 @@ const ELEMENT_LABEL_KO: Record<Element, string> = {
   water: "수(바다/하천)",
 };
 
+/**
+ * 디버그 플래그
+ * - 프로덕션이 아니거나 NEXT_PUBLIC_DEBUG=true이면 내부 수치 표시
+ * - 민감정보 포함 없음(안심 표출)
+ */
 const SHOW_DEBUG =
   process.env.NEXT_PUBLIC_DEBUG === "true" || process.env.NODE_ENV !== "production";
 
 export default function Page() {
+  /* ──────────────────────────────────────────────────────────
+     로컬 상태: 폼 입력값, 로딩/오류, 서버 응답
+     - BirthDateTime 컴포넌트는 { birthDate, birthTime, timeUnknown }를 관리
+     ────────────────────────────────────────────────────────── */
   const [error, setError] = useState<string | null>(null);
   const [mbti, setMBTI] = useState<MBTI>(MBTIS[0]);
   const [travelMonth, setMonth] = useState<number>(1);
@@ -77,6 +102,12 @@ export default function Page() {
     };
   } | null>(null);
 
+  /**
+   * 제출 핸들러
+   * 1) birthTime: '모름'이면 필드 자체를 전송하지 않음(서버 스키마가 string 타입)
+   * 2) /api/recommend POST → ok 아니면 상세 메시지 파싱
+   * 3) 결과/컨텍스트 상태 업데이트, 오류 알림
+   */
   const handleSubmit = async () => {
     setLoading(true);
     setError(null);
@@ -96,6 +127,7 @@ export default function Page() {
         body: JSON.stringify(payload),
       });
 
+      // HTTP 에러 처리: Zod issues 또는 error 메시지를 최대 200자만 표시
       if (!res.ok) {
         let msg = `요청 실패(${res.status})`;
         try {
@@ -109,10 +141,12 @@ export default function Page() {
         throw new Error(msg);
       }
 
+      // 정상 응답: 결과/컨텍스트 상태 갱신
       const json = await res.json();
       setResults(json.results ?? []);
       setCtx(json.ctx ?? null);
     } catch (e: any) {
+      // 실패 시: 결과 초기화 + 사용자 친화적 오류 메시지
       setResults([]); setCtx(null);
       setError(e?.message ?? "요청 중 오류가 발생했습니다.");
     } finally {
@@ -120,6 +154,12 @@ export default function Page() {
     }
   };
 
+  /* ──────────────────────────────────────────────────────────
+     렌더링
+     - select.form-select: globals.css의 네이티브 선택 UI 커스텀 클래스 사용
+     - 화살표는 SVG(포인터 이벤트 비활성)로 오버레이
+     - 버튼 disabled 상태는 시각적 피드백 + 중복 요청 방지
+     ────────────────────────────────────────────────────────── */
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto max-w-3xl px-4 py-8">
@@ -139,6 +179,7 @@ export default function Page() {
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
+              {/* 커스텀 드롭다운 화살표 (접근성: aria-hidden) */}
               <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 opacity-60"
                    width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
@@ -146,7 +187,7 @@ export default function Page() {
             </div>
           </div>
 
-          {/* 사주 입력 */}
+          {/* 사주 입력 (생년월일/출생시간/모름 처리) */}
           <BirthDateTime value={bd} onChange={setBd} />
 
           {/* 여행 월 */}
@@ -187,6 +228,7 @@ export default function Page() {
                 <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
               </svg>
             </div>
+            {/* 현재 선택된 예산 레벨의 상세 힌트 */}
             <p className="text-xs text-neutral-500">
               {BUDGET_CHOICES.find((b) => b.level === budgetLevel)?.hint}
             </p>
@@ -233,6 +275,7 @@ export default function Page() {
             </div>
           </div>
 
+          {/* 제출 버튼: 로딩 시 비활성화 */}
           <button
             data-testid="submit"
             onClick={handleSubmit}
@@ -242,6 +285,7 @@ export default function Page() {
             {loading ? "계산 중…" : "추천 여행지 보기"}
           </button>
 
+          {/* 에러 알림(스크린리더 즉시 읽기) */}
           {error && (
             <div
               role="alert"
@@ -253,6 +297,7 @@ export default function Page() {
           )}
         </div>
 
+        {/* 디버그: 입력 가중치/간지 표기 (개발/디버그 모드 전용) */}
         {SHOW_DEBUG && (
           <div className="mt-6 space-y-2 text-xs text-neutral-400">
             {ctx && (
@@ -266,6 +311,7 @@ export default function Page() {
           </div>
         )}
 
+        {/* 결과 리스트: 설명 가능성 강조(추천 이유, 노트) */}
         <div className="mt-3 space-y-4">
           {results.map((r) => {
             return (
@@ -279,6 +325,7 @@ export default function Page() {
                   </span>
                 </div>
 
+                {/* 개발/디버그 정보: 예산 라벨·추천월·지역·내부 score */}
                 {SHOW_DEBUG && (
                   <>
                     <p className="text-sm text-neutral-400 mt-1">
@@ -314,12 +361,14 @@ export default function Page() {
           })}
         </div>
 
+        {/* 개인정보 비저장 안내(법/윤리적 고지) */}
         <p className="text-[11px] text-neutral-600 mt-4">
           * 사주 정보는 엔터테인먼트/퍼스널라이즈드 목적이며, 입력값은 저장하지 않습니다.
         </p>
       </div>
 
-      {/* 네이티브 select 화살표 숨기기 + 커스텀 화살표 사용 */}
+      {/* 네이티브 select 화살표 숨기기 + 커스텀 화살표 사용
+         - 브라우저 기본 화살표 비표시(접근성 영향 없음, 키보드/스크린리더 정상) */}
       <style jsx global>{`
         select { appearance: none; -webkit-appearance: none; -moz-appearance: none; }
         select::-ms-expand { display: none; }

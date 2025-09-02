@@ -5,9 +5,15 @@ import type {
   UserInput, Element, Trait, Destination, PersonalizationContext
 } from "./types";
 
-// ───────────────────────────────────────────────────────────
-// 가중치
-// ───────────────────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────
+   전역 가중치(알고리즘 파라미터)
+   - alpha : MBTI(특성 벡터) 코사인 유사도 가중
+   - beta  : 사주(오행 분포) 코사인 유사도 가중
+             * 출생 '시간' 미입력 시 beta를 자동 감쇠(0.7배)하여 불확실성 반영
+             * 출생 '날짜' 미입력 시 beta=0
+   - gamma : 패널티(예산/안전 등) 감산 계수
+   - season: 시즌 보정(독립항) 계수
+   ─────────────────────────────────────────────────────────── */
 const W = {
   alpha: 0.50, // MBTI(특성) 코사인
   beta:  0.40, // 사주(오행) 코사인 (시간 미입력 시 자동 감쇠)
@@ -15,52 +21,57 @@ const W = {
   season: 1.00 // 시즌 독립항
 };
 
-// MBTI 살리언스 / 봉우리
-const MBTI_SALIENCE = 1.35;
-const MBTI_PEAK1 = 0.18;
-const MBTI_PEAK2 = 0.10;
+/* MBTI 살리언스/봉우리(특성 대비를 약간 과장하여 설명가능성/분별력 향상) */
+const MBTI_SALIENCE = 1.35; // 0.5(중립)에서의 편차를 확대
+const MBTI_PEAK1 = 0.18;    // 1순위 특성 배율 보너스(+18%)
+const MBTI_PEAK2 = 0.10;    // 2순위 특성 배율 보너스(+10%)
 
-// MBTI 특화 보너스(올라운더 과점 완화)
+/* MBTI 특화 보너스(올라운더가 과점하지 않도록, 상위 특성과 목적지의 강점 정합 시 가점) */
 const MBTI_SPEC_GAIN = 0.10;
-const MBTI_SPEC_W1   = 0.6;
-const MBTI_SPEC_W2   = 0.4;
+const MBTI_SPEC_W1   = 0.6; // 상위 특성 가중
+const MBTI_SPEC_W2   = 0.4; // 차상위 특성 가중
 
-// 동반형태 가산(표시·타이브레이크)
-const COMP_BONUS_BASE = 0.18;
-const COMP_BONUS_VAR  = 0.24;
-const RANK_NUDGE      = 0.03;
+/* 동반 형태(솔로/커플/친구/가족) 보너스 및 근소 차이 타이브레이크 */
+const COMP_BONUS_BASE = 0.18; // 동반형태 보너스의 베이스
+const COMP_BONUS_VAR  = 0.24; // 목적지 메타데이터 커버리지에 따른 가변폭
+const RANK_NUDGE      = 0.03; // 근소한 동점 상황에서의 순위 보정
 
-// 동반형태→Trait 블렌드(코사인에도 반영)
+/* 동반형태→Trait 블렌드 강도(CTB). MBTI 특성에 상황 바이어스 혼합 비율 */
 const CTB = 0.18;
 
-// 거리(비행시간) — 현 시점 OFF
+/* (옵션) 거리/비행시간 패널티 관련 상수 — 현재 비활성화 */
 const logistic = (x: number, k = 0.8, x0 = 1) => 1 / (1 + Math.exp(-k * (x - x0)));
 const DISTANCE_PENALTY_ENABLED = false;
 
-// 예산 필터 모드
+/* 예산 필터 모드:
+   - strict: 동일 레벨만 허용
+   - band  : ±1 밴드 허용
+   - cap   : 사용자 예산보다 2레벨 이상 고가만 제외 */
 type BudgetFilterMode = "strict" | "band" | "cap";
 const BUDGET_FILTER_MODE: BudgetFilterMode = "strict";
 
-// Trait 키 고정
+/* Trait 키 고정(코사인 계산/루프용) */
 const TRAIT_KEYS: Trait[] = ["social","novelty","structure","flexibility","sensory","culture"];
 
-// ───────────────────────────────────────────────────────────
-// 프레젠테이션 지표 임계 & 함수
-// ───────────────────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────
+   프레젠테이션(표시) 지표: 임계/소프트맥스 온도
+   - closeness: 상위 후보 대비 상대 점수(= scoreRaw / top)
+   - share    : softmax 분율로 상위권 '지분'을 표현
+   ─────────────────────────────────────────────────────────── */
 const MIN_CLOSENESS = 0.05; // top 대비 5% 미만은 숨김
 const MIN_SHARE     = 0.01; // softmax share 1% 미만은 숨김
 const SOFTMAX_T     = 0.08; // 온도(작을수록 차이 강조)
 
-// 소프트맥스 비중
+/** 점수 배열을 소프트맥스로 정규화하여 '비중(share)' 산출 */
 function softmaxShares(scores: number[], T = SOFTMAX_T): number[] {
   if (!scores.length) return [];
-  const m = Math.max(...scores);
+  const m = Math.max(...scores); // 안정성 향상: max-shift
   const exps = scores.map(s => Math.exp((s - m) / Math.max(1e-6, T)));
   const Z = exps.reduce((a,b)=>a+b, 0) || 1;
   return exps.map(e => e / Z);
 }
 
-// 근접도→등급
+/** 근접도(0~1) → 등급 매핑 */
 function tierFromCloseness(c: number): "S"|"A"|"B"|"C"|"D" {
   if (c >= 0.90) return "S";
   if (c >= 0.78) return "A";
@@ -69,17 +80,18 @@ function tierFromCloseness(c: number): "S"|"A"|"B"|"C"|"D" {
   return "D";
 }
 
-// 인덱스→퍼센타일(0=최상위, 100=최하위)
+/** 정렬 인덱스 기반 퍼센타일(0=최상위, 100=최하위) */
 function percentileFromIndex(idx: number, n: number): number {
   if (n <= 1) return 0;
   return Math.round((idx) / (n - 1) * 100);
 }
 
-// ───────────────────────────────────────────────────────────
-// 유틸
-// ───────────────────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────
+   유틸리티
+   ─────────────────────────────────────────────────────────── */
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
+/** 살리언스 강화: 0.5(중립)에서의 편차를 확대하여 분별력/설명가능성↑ */
 function enhanceSalienceTraits<T extends string>(t: Record<T, number>): Record<T, number> {
   const out = {} as Record<T, number>;
   for (const k of Object.keys(t) as T[]) {
@@ -89,6 +101,7 @@ function enhanceSalienceTraits<T extends string>(t: Record<T, number>): Record<T
   return out;
 }
 
+/** 상위 2개 특성 봉우리 강화(탑-헤비 가중으로 개성 반영) */
 function boostTopTraits<T extends string>(t: Record<T, number>): Record<T, number> {
   const entries = Object.entries(t) as [T, number][];
   entries.sort((a,b)=>b[1]-a[1]);
@@ -100,6 +113,7 @@ function boostTopTraits<T extends string>(t: Record<T, number>): Record<T, numbe
   return out;
 }
 
+/** 예산 허용 여부 판단(필터) — 모드별 허용 범위 상이 */
 function isBudgetAllowed(d: Destination, i: UserInput) {
   if (!i.budgetLevel) return true;
   const delta = d.budgetLevel - i.budgetLevel;
@@ -111,7 +125,7 @@ function isBudgetAllowed(d: Destination, i: UserInput) {
   }
 }
 
-// 코사인 유사도
+/** 제네릭 코사인 유사도: 키 합집합에 대해 0 보충 후 dot/‖a‖‖b‖ */
 const cosine = <K extends string>(
   a: Partial<Record<K, number>>,
   b: Partial<Record<K, number>>
@@ -132,7 +146,11 @@ const cosine = <K extends string>(
   return denom > 0 ? (dot / denom) : 0;
 };
 
-// 동반형태 점수(표시·타이브레이크)
+/**
+ * 동반형태 점수(표시·타이브레이크용)
+ * - 목적지 메타(치안/접근성/그룹 용이/나이트라이프/언어)와 동반형태의 상관을 평균
+ * - kidFriendly/적합대상(suitableFor) 플래그는 가산
+ */
 function companionScore(d: Destination, i: UserInput): number {
   const c = i.companions;
   if (!c) return 0.5;
@@ -149,7 +167,10 @@ function companionScore(d: Destination, i: UserInput): number {
   return n === 0 ? 0.5 : clamp01(s / n);
 }
 
-// 동반형태 커버리지
+/**
+ * 동반형태 '커버리지' (메타데이터 채움 정도)
+ * - 더 많은 필드가 채워져 있을수록 companionScore의 신뢰도↑ → 보너스 가변폭↑
+ */
 function companionCoverage(d: Destination): number {
   const fields: Array<keyof Destination> = [
     "safetyIndex","accessEase","languageEase","nightlife","groupEase"
@@ -162,7 +183,7 @@ function companionCoverage(d: Destination): number {
   return clamp01(filled / max);
 }
 
-// companions → trait 초점 벡터
+/** 동반형태 → 특성 바이어스 벡터(설명가능 규칙) */
 const COMPANION_TRAIT_BIAS: Record<NonNullable<UserInput["companions"]>, Record<Trait, number>> = {
   solo:    { social:0.2, novelty:0.1, structure:0.40, flexibility:0.10, sensory:0.05, culture:0.15 },
   couple:  { social:0.25, novelty:0.10, structure:0.10, flexibility:0.15, sensory:0.30, culture:0.10 },
@@ -170,6 +191,10 @@ const COMPANION_TRAIT_BIAS: Record<NonNullable<UserInput["companions"]>, Record<
   family:  { social:0.10, novelty:0.05, structure:0.35, flexibility:0.15, sensory:0.10, culture:0.25 },
 };
 
+/**
+ * MBTI 특성 ←(혼합)→ 동반형태 바이어스
+ * - CTB만큼 상황 바이어스를 섞어 현실적 선호 반영
+ */
 function blendTraitsWithCompanion(
   mbtiTraits: Record<Trait, number>,
   companions?: UserInput["companions"]
@@ -185,7 +210,9 @@ function blendTraitsWithCompanion(
   return out;
 }
 
-// 시즌 독립 조정(가산/감산) + 특이성 가중
+/* ── 시즌 보정(월/인접월/특이성 반영) ─────────────────────────
+   - bestMonths에 포함되면 가산, 1달 인접이면 경미한 감산, 그 외는 감산
+   - bestMonths 개수가 적을수록(특이성↑) 보정 폭 확대 */
 const SEASON_BONUS     = 0.08;
 const SEASON_PEN_NEAR  = 0.10;
 const SEASON_PEN_FAR   = 0.22;
@@ -202,7 +229,12 @@ function seasonAdjust(d: Destination, i: UserInput): number {
   return -W.season * (near ? SEASON_PEN_NEAR : SEASON_PEN_FAR) * (0.5 + 0.5 * specificity);
 }
 
-// 패널티(시즌 제외)
+/**
+ * 패널티(시즌 제외)
+ * - 예산 초과(over): 강한 감산, 예산 미만(under): 약한 가산(여유)
+ * - 솔로 여행: 구조/문화 점수가 높을수록 안전/안정 기대 → 감산 완화
+ * - (옵션) 비행시간 초과 시 로지스틱 패널티
+ */
 const penalty = (d: Destination, i: UserInput) => {
   let p = 0;
   if (i.budgetLevel) {
@@ -228,6 +260,7 @@ type Explain = {
   notes: string[],
 };
 
+/* 사용자 노출용 한글 라벨/이유(설명가능성 강화) */
 const TRAIT_LABEL_KO: Record<Trait, string> = {
   social: "사회성/교류",
   novelty: "새로움/탐색",
@@ -259,6 +292,7 @@ const ELEMENT_REASON_KO: Record<Element, string> = {
   water: "바다·강·온천 등 수변 동선을 넣으면 집중 회복",
 };
 
+/** 예산 간단 조언(상황별 텍스트 노트) */
 function budgetAdvice(d: Destination, i: UserInput): string[] {
   if (!i.budgetLevel) return [];
   const delta = d.budgetLevel - i.budgetLevel;
@@ -276,12 +310,18 @@ function budgetAdvice(d: Destination, i: UserInput): string[] {
   return tips;
 }
 
+/** 상위 2개 추출(라벨링/설명용) */
 function top2<T extends string>(v: Record<T, number>): [T, number][] {
   return (Object.entries(v) as [T, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 2);
 }
 
+/**
+ * 설명 블록 구성
+ * - MBTI 상위 특성/사주 상위 오행 라벨 + 이유 텍스트
+ * - 입력 상태에 따라 "MBTI 중심 추천" 등 보조 메모 추가
+ */
 function explain(
   d: Destination,
   traits: Record<Trait, number>,
@@ -314,7 +354,11 @@ function explain(
   return { mbtiTop: mb, sajuTop: sj, notes };
 }
 
-// MBTI 특화 보너스
+/**
+ * MBTI 특화 보너스
+ * - 목적지 traitProfile의 '평균' 대비, 상위 1~2개 특성 지점이 두드러지면 가점
+ * - 본인 MBTI 확신도(상위 특성이 0.5에서 얼마나 떨어져 있는지)에 따라 스케일
+ */
 function mbtiSpecializationBonus(
   mbtiTraits: Record<Trait, number>,
   d: Destination
@@ -331,10 +375,11 @@ function mbtiSpecializationBonus(
   return MBTI_SPEC_GAIN * centered * (0.6 + 0.4 * mbtiConfidence);
 }
 
-// Variety & Country Balance Guard
+/* 다양성/국가 편중 완화: 경미한 난수성(Jitter) + 국가 개수 패널티 */
 const VARIETY_JITTER = 0.05;
 const COUNTRY_BALANCER_MAX = 0.06;
 
+/** 문자열 안정 해시 → [0,1) (시드: FNV-1a 변형) */
 function stableHash01(s: string): number {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < s.length; i++) {
@@ -344,6 +389,11 @@ function stableHash01(s: string): number {
   return (h >>> 0) / 2 ** 32;
 }
 
+/**
+ * 리스트 후처리: 약간의 다양성 부여 & 국가 편중 완화
+ * - 입력(특히 region=overseas)에서 한 국가가 과밀한 경우 경미한 패널티
+ * - 입력 MBTI/동반형태/목적지ID로 고정 시드를 만들어 안정적 '재현 가능' 난수 부여
+ */
 function applyVarietyAndCountryBalance<T extends { destination: Destination; scoreRaw: number }>(
   rows: T[],
   input: UserInput,
@@ -377,6 +427,23 @@ export type RecommendOpts = {
   minShare?: number;     // 기본값 MIN_SHARE
 };
 
+/**
+ * 추천 메인 함수
+ * 절차:
+ *  1) MBTI → 특성 벡터 생성(살리언스/봉우리 강화) → 동반형태 바이어스 블렌드
+ *  2) 사주 오행 분포(elements) 산출 → 출생일/시간 여부에 따라 beta 가중 조절
+ *  3) 데이터셋 준비: region/예산 필터(빈 결과 방지 fallback 체계 포함)
+ *  4) 점수 계산:
+ *     scoreRaw = alpha·cosine(traits, d.traitProfile)
+ *               + betaLocal·cosine(elements, d.elementProfile)
+ *               - gamma·penalty(d, input)
+ *               + (compWeight)·(companionScore-0.5)   // 보너스 중심
+ *               + RANK_NUDGE·(companionScore-0.5)     // 미세 타이브레이크
+ *               + seasonAdjust + mbtiSpecializationBonus
+ *  5) 다양성/국가 편중 보정 → 정렬
+ *  6) 표시 지표 계산(closeness/tier/share/percentile)
+ *  7) 임계 미만 숨김(모두 숨겨지면 안전하게 원본 유지) → limit 적용
+ */
 export function recommend(input: UserInput, opt?: RecommendOpts) {
   // 1) MBTI 쿼리 벡터
   const mbtiBase = boostTopTraits(enhanceSalienceTraits(mbtiToTraits(input.mbti)));
@@ -395,6 +462,7 @@ export function recommend(input: UserInput, opt?: RecommendOpts) {
       ? source.filter((d) => d.region === input.region)
       : [...source];
 
+  // 예산 필터 (비어지면 완화 단계적으로 적용)
   let pool = base.filter((d) => isBudgetAllowed(d, input));
   if (pool.length === 0 && input.budgetLevel) {
     const bandLocal = base.filter((d) => Math.abs(d.budgetLevel - input.budgetLevel!) <= 1);
@@ -415,7 +483,7 @@ export function recommend(input: UserInput, opt?: RecommendOpts) {
   const scored = pool.map((d) => {
     const comp = companionScore(d, input);
     const cov  = companionCoverage(d);
-    const compWeight = COMP_BONUS_BASE + COMP_BONUS_VAR * cov;
+    const compWeight = COMP_BONUS_BASE + COMP_BONUS_VAR * cov; // 메타 커버리지에 따라 신뢰 기반 확대
     const season = seasonAdjust(d, input);
     const spec   = mbtiSpecializationBonus(mbtiBase, d);
 
@@ -465,6 +533,12 @@ export function recommend(input: UserInput, opt?: RecommendOpts) {
   }));
 }
 
+/**
+ * 개인화 컨텍스트 산출(디버그/설명용)
+ * - traits  : MBTI → 특성 벡터(살리언스/봉우리 적용 전 원본)
+ * - elements: 사주 오행 분포(정규화)
+ * - pillars : 연/월/시 간지 라벨
+ */
 export function getPersonalization(input: UserInput): PersonalizationContext {
   const traits = mbtiToTraits(input.mbti);
   const { elements, pillars } = getElementsWithDetail(input);

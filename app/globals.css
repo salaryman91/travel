@@ -1,16 +1,37 @@
-/* app/globals.css */
+/* ==========================================================================
+   app/globals.css
+   - Next.js App Router 전역 스타일
+   - 설계 원칙: 시스템 컬러 토큰( --background / --foreground ) → 테마 연동
+   - 접근성: 모바일 터치 타겟 높이(≥44px), iOS 16px 줌 방지, 대비·가독성 우선
+   - Tailwind: 유틸리티 우선, 필요한 커스텀 부분만 클래스 정의
+   ========================================================================== */
+
+/* Tailwind 엔트리 (v4: @import "tailwindcss") */
 @import "tailwindcss";
 
+/* --------------------------------------------------------------------------
+   1) CSS Custom Properties (라이트 기본값)
+   - 모든 색상/폰트는 가능한 한 CSS 변수로 추상화하여 다크모드/브랜드 테마 전환을 용이화
+   -------------------------------------------------------------------------- */
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
 
+/* --------------------------------------------------------------------------
+   2) 기본 텍스트 크기 스케일 고정
+   - iOS/안드로이드 브라우저의 자동 텍스트 확대 방지 (접근성 설정을 존중하는 범위 내)
+   -------------------------------------------------------------------------- */
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
+/* --------------------------------------------------------------------------
+   3) Tailwind v4 인라인 테마 토큰
+   - v3 사용 시 @theme 블록은 제거 필요
+   - 애플리케이션 공통 색/폰트 토큰을 Tailwind 유틸로 소비하기 위한 브리지
+   -------------------------------------------------------------------------- */
 /* Tailwind v4 사용 시 — v3면 제거 */
 @theme inline {
   --color-background: var(--background);
@@ -19,6 +40,11 @@ html {
   --font-mono: var(--font-geist-mono);
 }
 
+/* --------------------------------------------------------------------------
+   4) 다크 모드(미디어 쿼리 기반)
+   - prefers-color-scheme에 따른 시스템 테마 추종
+   - 필요 시 class 기반(예: .dark) 전략으로 전환 가능
+   -------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -26,26 +52,33 @@ html {
   }
 }
 
+/* --------------------------------------------------------------------------
+   5) 문서 기본값
+   - 시스템 폰트 스택 대신 프로젝트 폰트(geist)가 주입되기 전 안전 폴백 지정
+   -------------------------------------------------------------------------- */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ================================
-   수정된 네이티브 셀렉트(.form-select)
-================================= */
+/* =============================================================================
+   6) 네이티브 <select> 커스터마이징 (.form-select)
+   - 목표: 플랫폼 일관성, 터치 친화성(44px), iOS 16px 줌 방지
+   - 주의: appearance: none 사용 시 브라우저 기본 화살표가 사라질 수 있음
+           → 우측 패딩으로 커스텀 화살표/아이콘을 배치할 여유 확보(2.75rem)
+   ============================================================================ */
 .form-select {
-  --fs-sel: 16px; /* iOS 줌 방지 */
+  --fs-sel: 16px; /* iOS 줌 방지: 입력 시 16px 미만이면 자동 확대될 수 있음 */
   --lh-sel: 1.5;
   --clr-sel: #ffffff;
 
   -webkit-appearance: none;
   appearance: none;
 
-  min-height: 44px; /* 터치 친화적 최소 높이 */
-  padding: 10px 2.75rem 10px 12px;
-  font-size: var(--fs-sel) !important; /* 강제 적용 */
+  min-height: 44px; /* 터치 타겟 높이: WCAG 권고치 반영 */
+  padding: 10px 2.75rem 10px 12px; /* 우측 여백: 커스텀 아이콘/화살표 영역 확보 */
+  font-size: var(--fs-sel) !important; /* 일부 모바일 브라우저 강제 적용 필요 */
   line-height: var(--lh-sel);
   font-weight: 500;
 
@@ -54,26 +87,33 @@ body {
   color: var(--clr-sel);
   border-radius: 0.375rem;
 
+  /* 텍스트 렌더링 최적화(가독성 향상) */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 
-  /* 터치 반응성 개선 */
+  /* 스크롤/줌 충돌 방지: 스와이프 제스처 반응성 향상 */
   touch-action: manipulation;
 }
 
-.form-select:disabled { 
-  opacity: 0.6; 
-  color: #71717a !important; 
+/* 비활성화 상태: 대비 / 상호작용 불가 표현 */
+.form-select:disabled {
+  opacity: 0.6;
+  color: #71717a !important;
 }
 
-.form-select option { 
+/* 드롭다운 옵션 가시성 보장 (다크 UI에서 옵션 텍스트가 흐려지는 이슈 예방) */
+.form-select option {
   padding-block: 12px;
-  color: #ffffff !important; /* 드롭다운 옵션 색상 보장 */
+  color: #ffffff !important;
   background-color: #171717;
 }
 
-/* iOS Safari 최적화 */
+/* --------------------------------------------------------------------------
+   7) iOS Safari 전용 최적화
+   - @supports (-webkit-touch-callout: none) 해킹: WebKit 전용 기능 존재 여부로 분기
+   - 일부 iOS 환경에서 select/option의 폰트 크기를 강제해야 가독·줌 문제 해소
+   -------------------------------------------------------------------------- */
 @supports (-webkit-touch-callout: none) {
   .form-select, .form-select option {
     font-size: 16px !important;
@@ -81,50 +121,64 @@ body {
   }
 }
 
-/* ---- 오버레이/쌓임 시스템 ---- */
-.select-wrap { 
-  position: relative; 
+/* =============================================================================
+   8) 셀렉트 플레이스홀더 오버레이 시스템
+   - 문제: 네이티브 select에는 placeholder 속성이 없음
+   - 해결: select 위에 label역할의 .select-placeholder를 올려 비어 있을 때만 표시
+           z-index로 stacking context 제어 (placeholder가 클릭 차단하지 않도록 pointer-events: none)
+   ============================================================================ */
+.select-wrap {
+  position: relative;
   width: 100%;
 }
 
-.select-wrap > select { 
-  position: relative; 
-  z-index: 1; 
+/* 네이티브 select는 실제 포커스/선택을 담당하므로 z-index:1 */
+.select-wrap > select {
+  position: relative;
+  z-index: 1;
 }
 
-.select-wrap > .select-placeholder { 
-  position: absolute; 
-  z-index: 2;
+/* 플레이스홀더는 시각적 텍스트만 제공 (상호작용 차단) */
+.select-wrap > .select-placeholder {
+  position: absolute;
+  z-index: 2;            /* select 위에 배치 */
   left: 12px;
-  right: 44px;
+  right: 44px;           /* 우측 화살표/아이콘 영역 침범 방지 */
   top: 0;
   bottom: 0;
+
   display: flex;
   align-items: center;
+
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+
   font-size: var(--fs-sel);
   line-height: var(--lh-sel);
   font-weight: 500;
-  color: #a1a1aa; /* 플레이스홀더 색상 */
-  pointer-events: none;
+  color: #a1a1aa;        /* placeholder 전용 색상 (실제 value와 구분) */
+
+  pointer-events: none;  /* 클릭은 select로 전달 */
 }
 
-.select-placeholder.hidden { 
-  display: none !important; 
+/* 값이 선택되면 placeholder 비표시 */
+.select-placeholder.hidden {
+  display: none !important;
 }
 
-/* 상단 라벨 스타일링 */
+/* 상단 라벨/헤딩의 렌더링 품질 향상 */
 label, h1 {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-/* ================================
-   모바일 반응형 개선
-================================= */
+/* =============================================================================
+   9) 모바일 반응형 최적화
+   - 작은 뷰포트에서 패딩/폰트 크기/그리드 재설정
+   - 생년월일 그리드: 데스크톱(2fr 1fr 1fr) → 모바일(1fr 1fr 1fr) 균등화
+   ============================================================================ */
 @media (max-width: 640px) {
   .form-select {
     min-height: 44px;
@@ -138,7 +192,8 @@ label, h1 {
     font-size: 16px;
   }
 
-  /* 모바일에서 생년월일 그리드 균등 분할 */
+  /* 모바일에서 생년월일 그리드 균등 분할
+     - 주의: Tailwind 유틸 클래스를 직접 CSS에서 타겟팅하는 특수 케이스 */
   .grid.grid-cols-\[2fr_1fr_1fr\] {
     grid-template-columns: 1fr 1fr 1fr;
   }
@@ -155,9 +210,12 @@ label, h1 {
   }
 }
 
-/* ================================
-   유틸리티 클래스
-================================= */
+/* =============================================================================
+   10) 유틸리티(필요 최소한만 정의)
+   - .contents: wrapper 엘리먼트를 DOM에 남기되 레이아웃 영향 제거
+   - .hidden  : display 토글용
+   - checkbox : 기본 accent-color 지정 (다크 UI 대비)
+   ============================================================================ */
 .contents {
   display: contents;
 }
@@ -166,7 +224,7 @@ label, h1 {
   display: none;
 }
 
-/* 체크박스 개선 */
+/* 체크박스 개선: 플랫폼별 기본 색 차이를 줄이기 위한 통일 */
 input[type="checkbox"] {
   accent-color: #ffffff;
   cursor: pointer;

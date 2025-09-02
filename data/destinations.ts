@@ -1,5 +1,32 @@
 import type { Destination } from "@/lib/types";
 
+/**
+ * destinations.ts
+ * - 목적: 추천 엔진에서 소비할 목적지(Destination) 카탈로그
+ * - 범위: 국내(domestic) / 해외(overseas)
+ * - 점수 체계(명시 없으면 0.0–1.0 정규화 스케일):
+ *   • traitProfile: 성향 적합도(사회성/새로움/질서/유연성/감각/문화)
+ *   • elementProfile: 오행/환경 적합도(목/화/토/금/수) — 합이 1일 필요는 없음
+ *   • accessEase / safetyIndex / languageEase / nightlife / groupEase: 0(낮음)–1(높음)
+ * - 비용 스케일:
+ *   • budgetLevel: 1=초저, 2=저, 3=중, 4=고, 5=최고 (기준: 1인/3박4일, 항공권 제외, 대략치)
+ * - 달력/시간:
+ *   • bestMonths: 여행 적기가 많은 월(1–12, 예: 1=1월). 지역별 기후/성수기 기준의 휴리스틱.
+ *   • avgFlightHoursFromICN: 인천(ICN) 기준 평균 편도 비행시간(시간, 근사치). 국내선은 0 또는 1 내외.
+ * - 태그:
+ *   • region: "domestic" | "overseas"
+ *   • suitableFor: ["solo" | "couple" | "friends" | "family"] 적합 대상
+ *   • themes: UI 필터/설명용 키워드(예: "city","beach","food","nightlife","nature","art","history","mountain","onsen")
+ * - 주석 규칙:
+ *   • // ───────── 섹션: 카테고리 구분
+ *   • notes: 사용자에게 노출 가능한 간단 설명/주의사항
+ *
+ * 추가/수정 팁:
+ *   1) 필수 키: id, name, country, region, traitProfile, elementProfile, budgetLevel
+ *   2) 선택 키는 엔진/UX가 유연히 처리(누락 시 안전한 기본값 가정)
+ *   3) 값 범위를 벗어나면(예: bestMonths에 0이나 13) 추천 점수 계산이 왜곡될 수 있음
+ */
+
 // 예산 가이드(3박4일, 항공 제외 대략치)
 // 1=초저, 2=저, 3=중, 4=고, 5=최고
 export const destinations: Destination[] = [
@@ -8,10 +35,10 @@ export const destinations: Destination[] = [
     id: "seoul",
     name: "서울",
     country: "대한민국",
-    region: "domestic",
+    region: "domestic", // 국내/해외 필터에 사용
     traitProfile: { social: 0.7, novelty: 0.6, structure: 0.85, flexibility: 0.45, sensory: 0.6, culture: 0.8 },
     elementProfile: { metal: 0.55, fire: 0.15, water: 0.1, earth: 0.1, wood: 0.1 },
-    bestMonths: [4, 5, 10, 11],
+    bestMonths: [4, 5, 10, 11], // 봄/가을 선호
     budgetLevel: 2,
     accessEase: 0.95,
     safetyIndex: 0.9,
@@ -40,7 +67,7 @@ export const destinations: Destination[] = [
     groupEase: 0.85,
     kidFriendly: true,
     suitableFor: ["friends", "family", "couple", "solo"],
-    avgFlightHoursFromICN: 1.0,
+    avgFlightHoursFromICN: 1.0, // 국내선/이동시간 근사
     themes: ["beach", "food", "city"],
     notes: ["해변/카페뷰", "해산물"],
   },
@@ -210,7 +237,7 @@ export const destinations: Destination[] = [
     region: "domestic",
     traitProfile: { social: 0.4, novelty: 0.5, structure: 0.65, flexibility: 0.55, sensory: 0.7, culture: 0.5 },
     elementProfile: { earth: 0.35, water: 0.25, wood: 0.2, metal: 0.15, fire: 0.05 },
-    bestMonths: [1, 2, 12, 7, 8],
+    bestMonths: [1, 2, 12, 7, 8], // 겨울 스포츠/여름 피서
     budgetLevel: 2,
     accessEase: 0.6, safetyIndex: 0.95, languageEase: 1.0,
     nightlife: 0.35, groupEase: 0.8, kidFriendly: true,
